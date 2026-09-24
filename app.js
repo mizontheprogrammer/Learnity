@@ -48,12 +48,16 @@ Answer Choices:
 Your Answer: Manages data and communicates with the database
 ------------------------------------------
 Question 7
-Choose 2 choices that are parts of MVC.
+Which four steps are needed to configure a voice VLAN on a switch port? (Choose four).
 Answer Choices:
- A. Model (SELECTED)
- B. Composer
- C. View (SELECTED)
- D. Route`;
+ A. Activate spanning-tree PortFast on the interface.
+ B. Ensure that voice traffic is trusted and tagged with a CoS priority value. (SELECTED)
+ C. Add a voice VLAN. (SELECTED)
+ D. Configure the interface as an IEEE 802.1Q trunk.
+ E. Configure the switch port in access mode. (SELECTED)
+ F. Assign a data VLAN to the switch port.
+ G. Assign the voice VLAN to the switch port. (SELECTED)
+ H. Configure the switch port interface with subinterfaces.`;
 
 const $ = (selector) => document.querySelector(selector);
 const els = {
@@ -71,6 +75,13 @@ let answered = false;
 
 function normalize(text) {
   return text.replace(/\r/g, '').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").trim();
+}
+
+function requestedChoiceCount(question) {
+  const match = question.match(/(?:choose|select)\s+(?:the\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b/i);
+  if (!match) return 0;
+  const words = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+  return Number(match[1]) || words[match[1].toLowerCase()] || 0;
 }
 
 function parseQuiz(raw) {
@@ -109,7 +120,23 @@ function parseQuiz(raw) {
 
     if (directAnswer) {
       if (choices.length) {
-        choices.forEach(choice => { choice.correct = choice.text.toLowerCase() === directAnswer.toLowerCase(); });
+        if (!choices.some(choice => choice.correct)) {
+          const exactIndex = choices.findIndex(choice => normalizeAnswer(choice.text) === normalizeAnswer(directAnswer));
+          if (exactIndex >= 0) {
+            choices[exactIndex].correct = true;
+          } else {
+            const answerParts = directAnswer.split(/\s*(?:,|;|\||\band\b)\s*/i).filter(Boolean);
+            answerParts.forEach(part => {
+              const letterMatch = part.match(/^([A-Z])(?:[.)]|$)/i);
+              const choiceIndex = letterMatch ? letterMatch[1].toUpperCase().charCodeAt(0) - 65 : -1;
+              if (choiceIndex >= 0 && choices[choiceIndex]) choices[choiceIndex].correct = true;
+              else {
+                const textMatch = choices.find(choice => normalizeAnswer(choice.text) === normalizeAnswer(part));
+                if (textMatch) textMatch.correct = true;
+              }
+            });
+          }
+        }
       } else {
         choices = [{ text: directAnswer, correct: true }];
       }
@@ -122,9 +149,10 @@ function parseQuiz(raw) {
     const question = `${questionLines.join(' ').trim()}${promptText ? ` — ${promptText}` : ''}`;
     if (!question || !choices.some(choice => choice.correct)) return null;
     const correctCount = choices.filter(choice => choice.correct).length;
-    const requestedCount = question.match(/(?:choose|select)\s+(\d+)/i)?.[1];
-    const type = choiceLines.length === 0 ? 'identification' : (correctCount > 1 || Number(requestedCount) > 1 ? 'multiple' : 'single');
-    return { id: blockIndex, question, choices, type, correctCount };
+    const requestedCount = requestedChoiceCount(question);
+    const selectionCount = requestedCount > 1 ? requestedCount : correctCount;
+    const type = choiceLines.length === 0 ? 'identification' : (correctCount > 1 || selectionCount > 1 ? 'multiple' : 'single');
+    return { id: blockIndex, question, choices, type, correctCount, selectionCount };
   }).filter(Boolean);
 }
 
@@ -165,7 +193,7 @@ function renderQuestion() {
   $('#questionInstruction').textContent = item.type === 'identification'
     ? 'Type your answer below'
     : item.type === 'multiple'
-      ? `Select ${item.correctCount} answers, then check your choices`
+      ? `Select ${item.selectionCount} answers, then check your choices`
       : 'Choose the best answer';
   els.progressText.textContent = `Question ${current + 1} of ${questions.length}`;
   els.scoreText.textContent = `${score} correct`;
@@ -234,15 +262,15 @@ function toggleMultiple(button, item) {
   if (answered) return;
   const selected = button.getAttribute('aria-pressed') === 'true';
   const currentCount = els.answers.querySelectorAll('.answer-button[aria-pressed="true"]').length;
-  if (!selected && currentCount >= item.correctCount) return;
+  if (!selected && currentCount >= item.selectionCount) return;
   button.setAttribute('aria-pressed', String(!selected));
   button.classList.toggle('selected', !selected);
   const selectedCount = els.answers.querySelectorAll('.answer-button[aria-pressed="true"]').length;
   const submit = els.answers.querySelector('.check-button');
-  submit.disabled = selectedCount !== item.correctCount;
-  submit.textContent = selectedCount === item.correctCount
+  submit.disabled = selectedCount !== item.selectionCount;
+  submit.textContent = selectedCount === item.selectionCount
     ? 'Check selected answers'
-    : `Select ${item.correctCount - selectedCount} more`;
+    : `Select ${item.selectionCount - selectedCount} more`;
 }
 
 function gradeMultiple(item) {
@@ -253,8 +281,13 @@ function gradeMultiple(item) {
     button.disabled = true;
     const selected = button.getAttribute('aria-pressed') === 'true';
     button.classList.remove('selected');
-    if (button.dataset.correct === 'true') button.classList.add('correct');
-    else if (selected) button.classList.add('incorrect');
+    if (button.dataset.correct === 'true') {
+      button.classList.add('correct');
+      button.insertAdjacentHTML('beforeend', '<span class="answer-result">Correct</span>');
+    } else if (selected) {
+      button.classList.add('incorrect');
+      button.insertAdjacentHTML('beforeend', '<span class="answer-result">Incorrect</span>');
+    }
   });
   els.answers.querySelector('.check-button').disabled = true;
   finishAnswer(isCorrect, isCorrect ? 'Correct — you selected the complete set.' : 'Not quite — the correct choices are highlighted.');

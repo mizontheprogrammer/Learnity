@@ -112,6 +112,9 @@ code { padding: 2px 5px; color: var(--primary-dark); background: var(--soft); bo
 .answer-button.correct .answer-key { color: white; background: var(--accent); }
 .answer-button.incorrect { border-color: var(--danger); background: var(--danger-soft); }
 .answer-button.incorrect .answer-key { color: white; background: var(--danger); }
+.answer-result { margin-left: auto; padding-left: 10px; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.answer-button.correct .answer-result { color: var(--accent); }
+.answer-button.incorrect .answer-result { color: var(--danger); }
 .answer-button.selected { border-color: var(--primary-dark); background: var(--soft); box-shadow: 0 0 0 2px rgba(89,121,40,.12); }
 .answer-button.selected .answer-key { color: white; background: var(--primary-dark); }
 .check-button { margin-top: 8px; }

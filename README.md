@@ -43,4 +43,4 @@ Questions using `Your Answer: ...` are also recognized and converted into a prac
 
 For identification questions, omit `Answer Choices:` and provide only `Your Answer:`. The learner will type the response, which is checked without case sensitivity.
 
-For questions such as `Choose 4 choices`, mark every correct choice with `(SELECTED)`. Learnity automatically requires the learner to select the same number of answers before checking.
+For questions such as `Choose 4 choices` or `Choose four`, mark every correct choice with `(SELECTED)`. Learnity waits for the requested number of selections and grades them only after the learner presses **Check selected answers**. Multi-answer lines such as `Your Answer: B, C, E, G` are also supported.
