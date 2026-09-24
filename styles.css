@@ -16,14 +16,16 @@
 }
 
 [data-theme="dark"] {
+  --primary: #91ac67;
+  --primary-dark: #b9d991;
   --ink: #f3f4fb;
-  --muted: #aeb5c5;
-  --bg: #11131c;
-  --surface: #1b1e2a;
-  --soft: #28321f;
-  --border: #313544;
-  --success-soft: #16372e;
-  --danger-soft: #3a2028;
+  --muted: #b8c0cf;
+  --bg: #0e1218;
+  --surface: #1a2029;
+  --soft: #263224;
+  --border: #39424e;
+  --success-soft: #163b30;
+  --danger-soft: #40232b;
   --shadow: 0 24px 70px rgba(0, 0, 0, .28);
 }
 
@@ -40,6 +42,17 @@ button:focus-visible, textarea:focus-visible, input:focus-visible + .fake-check 
 .ambient-one { width: 390px; height: 390px; background: radial-gradient(circle, #dfe9cf, transparent 70%); top: -180px; right: -110px; }
 .ambient-two { width: 310px; height: 310px; background: radial-gradient(circle, #edf3e4, transparent 70%); bottom: -160px; left: -110px; }
 [data-theme="dark"] .ambient { opacity: .12; }
+[data-theme="dark"] button:focus-visible,
+[data-theme="dark"] textarea:focus-visible,
+[data-theme="dark"] input:focus-visible + .fake-check { outline-color: rgba(185, 217, 145, .55); }
+[data-theme="dark"] .brand-mark,
+[data-theme="dark"] .primary-button { background: #075345; color: #ffffff; }
+[data-theme="dark"] .primary-button:hover { background: #096858; }
+[data-theme="dark"] code { color: #d8edbd; background: #314128; }
+[data-theme="dark"] textarea { background: #10151d; border-color: #414b59; }
+[data-theme="dark"] .fake-check { background: #121821; }
+[data-theme="dark"] .check-control input:checked + .fake-check { background: #91ac67; border-color: #b9d991; }
+[data-theme="dark"] .check-control input:checked + .fake-check svg { color: #102018; }
 
 .site-header { width: min(1180px, calc(100% - 40px)); height: 88px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 2; }
 .brand { display: flex; align-items: center; gap: 11px; color: var(--ink); text-decoration: none; font-family: Manrope, sans-serif; font-size: 20px; font-weight: 800; }
