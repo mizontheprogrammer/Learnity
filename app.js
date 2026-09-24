@@ -202,6 +202,7 @@ function renderQuestion() {
   els.feedback.hidden = true;
   els.next.hidden = true;
   els.answers.innerHTML = '';
+  els.answers.classList.toggle('dense-answers', item.type !== 'identification' && item.choices.length >= 7);
 
   if (item.type === 'identification') {
     renderIdentification(item);
