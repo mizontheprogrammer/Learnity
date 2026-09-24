@@ -32,7 +32,28 @@ Answer Choices:
  A. It removes index.php from the URL through URL rewriting (SELECTED)
  B. It defines routes for the application
  C. It stores database credentials
- D. It configures the Composer autoloader`;
+ D. It configures the Composer autoloader
+------------------------------------------
+Question 6
+Matching type. Match the term with the correct description.
+Prompts:
+ 1. Model
+Answer Choices:
+ A. Decides what should happen when a specific URL is requested
+ B. A dependency manager used to install CodeIgniter and its packages
+ C. Manages data and communicates with the database
+ D. Displays information to the user, usually as HTML
+ E. Maps an incoming URL to a specific controller and method
+ F. The single entry point that should be exposed to the web server
+Your Answer: Manages data and communicates with the database
+------------------------------------------
+Question 7
+Choose 2 choices that are parts of MVC.
+Answer Choices:
+ A. Model (SELECTED)
+ B. Composer
+ C. View (SELECTED)
+ D. Route`;
 
 const $ = (selector) => document.querySelector(selector);
 const els = {
@@ -55,7 +76,8 @@ function normalize(text) {
 function parseQuiz(raw) {
   const text = normalize(raw);
   if (!text) return [];
-  const blocks = text.split(/(?=^\s*Question\s+\d+\b)/gim).filter(b => /^\s*Question\s+\d+\b/i.test(b));
+  let blocks = text.split(/(?=^\s*Question\s+\d+\b)/gim).filter(b => /^\s*Question\s+\d+\b/i.test(b));
+  if (!blocks.length) blocks = [`Question 1\n${text}`];
   return blocks.map((block, blockIndex) => {
     const cleaned = block.replace(/^-{5,}\s*$/gm, '').trim();
     const lines = cleaned.split('\n').map(line => line.trim()).filter(Boolean);
@@ -93,9 +115,16 @@ function parseQuiz(raw) {
       }
     }
 
-    const question = questionLines.join(' ').trim();
+    const promptEnd = choicesIndex >= 0 ? choicesIndex : yourAnswerIndex;
+    const promptText = promptsIndex >= 0
+      ? lines.slice(promptsIndex + 1, promptEnd).map(line => line.replace(/^\d+[.)]\s*/, '')).join(' ').trim()
+      : '';
+    const question = `${questionLines.join(' ').trim()}${promptText ? ` — ${promptText}` : ''}`;
     if (!question || !choices.some(choice => choice.correct)) return null;
-    return { id: blockIndex, question, choices, direct: choices.length === 1 };
+    const correctCount = choices.filter(choice => choice.correct).length;
+    const requestedCount = question.match(/(?:choose|select)\s+(\d+)/i)?.[1];
+    const type = choiceLines.length === 0 ? 'identification' : (correctCount > 1 || Number(requestedCount) > 1 ? 'multiple' : 'single');
+    return { id: blockIndex, question, choices, type, correctCount };
   }).filter(Boolean);
 }
 
@@ -133,6 +162,11 @@ function renderQuestion() {
   const percent = (current / questions.length) * 100;
   els.questionNumber.textContent = `Question ${String(current + 1).padStart(2, '0')}`;
   els.questionText.textContent = item.question;
+  $('#questionInstruction').textContent = item.type === 'identification'
+    ? 'Type your answer below'
+    : item.type === 'multiple'
+      ? `Select ${item.correctCount} answers, then check your choices`
+      : 'Choose the best answer';
   els.progressText.textContent = `Question ${current + 1} of ${questions.length}`;
   els.scoreText.textContent = `${score} correct`;
   els.progressBar.style.width = `${percent}%`;
@@ -141,9 +175,9 @@ function renderQuestion() {
   els.next.hidden = true;
   els.answers.innerHTML = '';
 
-  if (item.direct) {
-    const decoys = ['None of the above', 'Not available in this framework', 'This requires a database'];
-    item.choices = shuffle([item.choices[0], ...decoys.map(text => ({ text, correct: false }))]);
+  if (item.type === 'identification') {
+    renderIdentification(item);
+    return;
   }
 
   item.choices.forEach((choice, index) => {
@@ -151,26 +185,98 @@ function renderQuestion() {
     button.type = 'button';
     button.className = 'answer-button';
     button.dataset.correct = choice.correct;
+    button.dataset.index = index;
+    if (item.type === 'multiple') button.setAttribute('aria-pressed', 'false');
     button.innerHTML = `<span class="answer-key">${String.fromCharCode(65 + index)}</span><span>${escapeHtml(choice.text)}</span>`;
-    button.addEventListener('click', () => selectAnswer(button, choice));
+    button.addEventListener('click', () => item.type === 'multiple' ? toggleMultiple(button, item) : selectAnswer(button, choice));
     els.answers.appendChild(button);
   });
+  if (item.type === 'multiple') {
+    const submit = document.createElement('button');
+    submit.type = 'button';
+    submit.className = 'primary-button check-button';
+    submit.textContent = 'Check selected answers';
+    submit.disabled = true;
+    submit.addEventListener('click', () => gradeMultiple(item));
+    els.answers.appendChild(submit);
+  }
   els.answers.querySelector('button')?.focus();
+}
+
+function renderIdentification(item) {
+  const form = document.createElement('form');
+  form.className = 'identification-form';
+  form.innerHTML = `
+    <label for="typedAnswer">Your answer</label>
+    <div class="answer-input-row">
+      <input id="typedAnswer" type="text" autocomplete="off" placeholder="Type your answer…" required>
+      <button class="primary-button check-button" type="submit">Check answer</button>
+    </div>`;
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    const input = form.querySelector('input');
+    const expected = item.choices[0].text;
+    const isCorrect = normalizeAnswer(input.value) === normalizeAnswer(expected);
+    input.disabled = true;
+    input.classList.add(isCorrect ? 'correct-input' : 'incorrect-input');
+    form.querySelector('button').disabled = true;
+    finishAnswer(isCorrect, isCorrect ? 'Correct — exact match.' : `Not quite — the correct answer is “${expected}”.`);
+  });
+  els.answers.appendChild(form);
+  form.querySelector('input').focus();
+}
+
+function normalizeAnswer(value) {
+  return value.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[.!?]+$/g, '');
+}
+
+function toggleMultiple(button, item) {
+  if (answered) return;
+  const selected = button.getAttribute('aria-pressed') === 'true';
+  const currentCount = els.answers.querySelectorAll('.answer-button[aria-pressed="true"]').length;
+  if (!selected && currentCount >= item.correctCount) return;
+  button.setAttribute('aria-pressed', String(!selected));
+  button.classList.toggle('selected', !selected);
+  const selectedCount = els.answers.querySelectorAll('.answer-button[aria-pressed="true"]').length;
+  const submit = els.answers.querySelector('.check-button');
+  submit.disabled = selectedCount !== item.correctCount;
+  submit.textContent = selectedCount === item.correctCount
+    ? 'Check selected answers'
+    : `Select ${item.correctCount - selectedCount} more`;
+}
+
+function gradeMultiple(item) {
+  if (answered) return;
+  const buttons = [...els.answers.querySelectorAll('.answer-button')];
+  const isCorrect = buttons.every(button => (button.getAttribute('aria-pressed') === 'true') === (button.dataset.correct === 'true'));
+  buttons.forEach(button => {
+    button.disabled = true;
+    const selected = button.getAttribute('aria-pressed') === 'true';
+    button.classList.remove('selected');
+    if (button.dataset.correct === 'true') button.classList.add('correct');
+    else if (selected) button.classList.add('incorrect');
+  });
+  els.answers.querySelector('.check-button').disabled = true;
+  finishAnswer(isCorrect, isCorrect ? 'Correct — you selected the complete set.' : 'Not quite — the correct choices are highlighted.');
 }
 
 function selectAnswer(button, choice) {
   if (answered) return;
-  answered = true;
   const isCorrect = choice.correct;
-  if (isCorrect) score++;
-  responses.push({ question: questions[current], correct: isCorrect });
   els.answers.querySelectorAll('button').forEach(answer => {
     answer.disabled = true;
     if (answer.dataset.correct === 'true') answer.classList.add('correct');
   });
   if (!isCorrect) button.classList.add('incorrect');
+  finishAnswer(isCorrect, isCorrect ? 'Correct — you’ve got it.' : 'Not quite — the correct answer is highlighted.');
+}
+
+function finishAnswer(isCorrect, message) {
+  answered = true;
+  if (isCorrect) score++;
+  responses.push({ question: questions[current], correct: isCorrect });
   els.feedback.className = `feedback ${isCorrect ? 'correct' : 'incorrect'}`;
-  els.feedback.textContent = isCorrect ? 'Correct — you’ve got it.' : 'Not quite — the correct answer is highlighted.';
+  els.feedback.textContent = message;
   els.feedback.hidden = false;
   els.next.textContent = current === questions.length - 1 ? 'See results' : 'Next question';
   const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -233,9 +339,12 @@ $('#restartQuiz').addEventListener('click', () => showView(els.setup));
 $('#retryMissed').addEventListener('click', () => startQuiz(responses.filter(r => !r.correct).map(r => r.question)));
 
 document.addEventListener('keydown', event => {
-  if (!els.quiz.hidden && !answered && /^[1-9]$/.test(event.key)) {
+  if (!els.quiz.hidden && !answered && questions[current]?.type !== 'identification' && /^[1-9]$/.test(event.key)) {
     els.answers.children[Number(event.key) - 1]?.click();
-  } else if (!els.quiz.hidden && answered && event.key === 'Enter') advance();
+  } else if (!els.quiz.hidden && answered && event.key === 'Enter') {
+    event.preventDefault();
+    advance();
+  }
 });
 
 const savedTheme = localStorage.getItem('practiceTheme');

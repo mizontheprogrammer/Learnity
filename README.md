@@ -5,6 +5,9 @@ A private, browser-based quiz maker. Paste questions, mark correct answers with 
 ## Features
 
 - Parses pasted multiple-choice questions
+- Supports matching questions with `Prompts:` and `Your Answer:`
+- Supports typed identification questions
+- Supports multi-select questions with multiple `(SELECTED)` answers
 - Immediate correct/incorrect feedback
 - Progress and score tracking
 - Retry missed questions
@@ -37,3 +40,7 @@ Answer Choices:
 ```
 
 Questions using `Your Answer: ...` are also recognized and converted into a practice question.
+
+For identification questions, omit `Answer Choices:` and provide only `Your Answer:`. The learner will type the response, which is checked without case sensitivity.
+
+For questions such as `Choose 4 choices`, mark every correct choice with `(SELECTED)`. Practice automatically requires the learner to select the same number of answers before checking.
