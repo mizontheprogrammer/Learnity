@@ -330,7 +330,7 @@ $('#startQuiz').addEventListener('click', () => {
   els.error.hidden = true;
   if ($('#shuffleAnswers').checked) parsed = parsed.map(q => ({ ...q, choices: shuffle(q.choices) }));
   if ($('#shuffleQuestions').checked) parsed = shuffle(parsed);
-  localStorage.setItem('practiceQuizText', els.input.value);
+  localStorage.setItem('learnityQuizText', els.input.value);
   startQuiz(parsed);
 });
 $('#nextQuestion').addEventListener('click', advance);
@@ -347,7 +347,7 @@ document.addEventListener('keydown', event => {
   }
 });
 
-const savedTheme = localStorage.getItem('practiceTheme');
+const savedTheme = localStorage.getItem('learnityTheme') || localStorage.getItem('practiceTheme');
 if (savedTheme === 'dark') document.documentElement.dataset.theme = 'dark';
 function syncThemeButton() {
   const dark = document.documentElement.dataset.theme === 'dark';
@@ -357,10 +357,10 @@ function syncThemeButton() {
 $('#themeToggle').addEventListener('click', () => {
   const dark = document.documentElement.dataset.theme === 'dark';
   document.documentElement.dataset.theme = dark ? '' : 'dark';
-  localStorage.setItem('practiceTheme', dark ? 'light' : 'dark');
+  localStorage.setItem('learnityTheme', dark ? 'light' : 'dark');
   syncThemeButton();
 });
 syncThemeButton();
 
-els.input.value = localStorage.getItem('practiceQuizText') || '';
+els.input.value = localStorage.getItem('learnityQuizText') || localStorage.getItem('practiceQuizText') || '';
 updateEstimate();
