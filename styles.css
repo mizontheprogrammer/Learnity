@@ -89,7 +89,7 @@ code { padding: 2px 5px; color: var(--primary-dark); background: var(--soft); bo
 .secondary-button:hover { border-color: var(--primary); color: var(--primary); }
 .error-message { margin: 14px 0 0; padding: 10px 12px; color: var(--danger); background: var(--danger-soft); border-radius: 8px; font-size: 13px; }
 
-.quiz-view { width: min(1080px, calc(100% - 40px)); margin: 0 auto; padding: 30px 0 60px; }
+.quiz-view { width: min(1240px, calc(100% - 40px)); margin: 0 auto; padding: 30px 0 60px; }
 .quiz-topbar { display: flex; justify-content: space-between; align-items: center; }
 .back-button { min-height: 44px; display: flex; align-items: center; gap: 4px; padding: 0 10px 0 4px; color: var(--muted); background: transparent; border: 0; font-weight: 600; }
 .back-button:hover { color: var(--ink); }
