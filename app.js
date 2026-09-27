@@ -1,4 +1,5 @@
 const sampleQuiz = `Question 1
+Topic: MVC
 A developer writes all of an application's HTML directly inside controller methods using echo statements, without using any View files. Why is this generally considered poor practice under the MVC pattern?
 Answer Choices:
  A. It mixes presentation code with request-handling logic, making the application harder to maintain (SELECTED)
@@ -7,6 +8,7 @@ Answer Choices:
  D. It causes routes to stop working entirely
 ------------------------------------------
 Question 2
+Topic: CodeIgniter Setup
 A developer runs composer create-project codeigniter4/appstarter myproject in the terminal. What is the most likely purpose of this command?
 Answer Choices:
  A. To update an existing CodeIgniter installation
@@ -15,6 +17,7 @@ Answer Choices:
  D. To install XAMPP
 ------------------------------------------
 Question 3
+Topic: CodeIgniter Hosting
 In a default CodeIgniter 4 installation, which folder should be set as the web server's document root for production hosting?
 Answer Choices:
  A. public (SELECTED)
@@ -23,10 +26,12 @@ Answer Choices:
  D. system
 ------------------------------------------
 Question 4
+Topic: MVC Views
 What is the name of the function used inside a CodeIgniter controller to load a View file and optionally pass data to it?
 Your Answer: view()
 ------------------------------------------
 Question 5
+Topic: URL Routing
 What is the purpose of the .htaccess file in the public folder of a CodeIgniter project?
 Answer Choices:
  A. It removes index.php from the URL through URL rewriting (SELECTED)
@@ -35,6 +40,7 @@ Answer Choices:
  D. It configures the Composer autoloader
 ------------------------------------------
 Question 6
+Topic: MVC Models
 Matching type. Match the term with the correct description.
 Prompts:
  1. Model
@@ -48,6 +54,7 @@ Answer Choices:
 Your Answer: Manages data and communicates with the database
 ------------------------------------------
 Question 7
+Topic: Networking
 Which four steps are needed to configure a voice VLAN on a switch port? (Choose four).
 Answer Choices:
  A. Activate spanning-tree PortFast on the interface.
@@ -60,11 +67,13 @@ Answer Choices:
  H. Configure the switch port interface with subinterfaces.`;
 
 const $ = (selector) => document.querySelector(selector);
+const HISTORY_KEY = 'learnityProgressHistory';
 const els = {
   setup: $('#setupView'), quiz: $('#quizView'), results: $('#resultsView'), input: $('#quizInput'),
   estimate: $('#questionEstimate'), error: $('#parseError'), questionText: $('#questionText'),
   questionNumber: $('#questionNumber'), answers: $('#answers'), feedback: $('#feedback'), next: $('#nextQuestion'),
-  progressText: $('#progressText'), scoreText: $('#scoreText'), progressBar: $('#progressBar')
+  progressText: $('#progressText'), scoreText: $('#scoreText'), progressBar: $('#progressBar'),
+  keyboardHint: $('#keyboardHint')
 };
 
 let questions = [];
@@ -91,8 +100,11 @@ function parseQuiz(raw) {
   if (!blocks.length) blocks = [`Question 1\n${text}`];
   return blocks.map((block, blockIndex) => {
     const cleaned = block.replace(/^-{5,}\s*$/gm, '').trim();
-    const lines = cleaned.split('\n').map(line => line.trim()).filter(Boolean);
+    let lines = cleaned.split('\n').map(line => line.trim()).filter(Boolean);
     lines.shift();
+    const topicLine = lines.find(line => /^Topic\s*:/i.test(line));
+    const topic = topicLine ? topicLine.replace(/^Topic\s*:\s*/i, '').trim() || 'General' : 'General';
+    lines = lines.filter(line => line !== topicLine);
     const choicesIndex = lines.findIndex(line => /^Answer Choices\s*:/i.test(line));
     const yourAnswerIndex = lines.findIndex(line => /^Your Answer\s*:/i.test(line));
     const promptsIndex = lines.findIndex(line => /^Prompts\s*:/i.test(line));
@@ -152,7 +164,7 @@ function parseQuiz(raw) {
     const requestedCount = requestedChoiceCount(question);
     const selectionCount = requestedCount > 1 ? requestedCount : correctCount;
     const type = choiceLines.length === 0 ? 'identification' : (correctCount > 1 || selectionCount > 1 ? 'multiple' : 'single');
-    return { id: blockIndex, question, choices, type, correctCount, selectionCount };
+    return { id: blockIndex, question, choices, type, correctCount, selectionCount, topic };
   }).filter(Boolean);
 }
 
@@ -203,6 +215,7 @@ function renderQuestion() {
   els.next.hidden = true;
   els.answers.innerHTML = '';
   els.answers.classList.toggle('dense-answers', item.type !== 'identification' && item.choices.length >= 7);
+  updateKeyboardHint(item);
 
   if (item.type === 'identification') {
     renderIdentification(item);
@@ -230,6 +243,14 @@ function renderQuestion() {
     els.answers.appendChild(submit);
   }
   els.answers.querySelector('button')?.focus();
+}
+
+function updateKeyboardHint(item) {
+  if (item.type === 'identification') {
+    els.keyboardHint.innerHTML = '<kbd>Enter</kbd> to check <span>•</span> <kbd>Esc</kbd> to exit';
+  } else {
+    els.keyboardHint.innerHTML = '<kbd>1–9</kbd> or <kbd>A–I</kbd> to select <span>•</span> <kbd>Enter</kbd> to check or continue <span>•</span> <kbd>Esc</kbd> to exit';
+  }
 }
 
 function renderIdentification(item) {
@@ -342,7 +363,86 @@ function showResults() {
   $('#resultTitle').textContent = percent === 100 ? 'Perfect score!' : percent >= 80 ? 'Great work!' : percent >= 60 ? 'Good progress!' : 'Keep practicing!';
   $('#resultSummary').textContent = `You answered ${score} of ${total} questions correctly.`;
   $('#retryMissed').hidden = score === total;
+  saveProgressAttempt();
   showView(els.results);
+}
+
+function getProgressHistory() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveProgressAttempt() {
+  const topicStats = {};
+  responses.forEach(response => {
+    const topic = response.question.topic || 'General';
+    if (!topicStats[topic]) topicStats[topic] = { correct: 0, total: 0 };
+    topicStats[topic].total++;
+    if (response.correct) topicStats[topic].correct++;
+  });
+
+  const history = getProgressHistory();
+  history.unshift({
+    completedAt: new Date().toISOString(),
+    correct: score,
+    total: questions.length,
+    topics: topicStats
+  });
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 50)));
+  renderProgressDashboard();
+}
+
+function renderProgressDashboard() {
+  const history = getProgressHistory();
+  const empty = $('#dashboardEmpty');
+  const content = $('#dashboardContent');
+  const clearButton = $('#clearProgress');
+  const hasHistory = history.length > 0;
+  empty.hidden = hasHistory;
+  content.hidden = !hasHistory;
+  clearButton.hidden = !hasHistory;
+  if (!hasHistory) return;
+
+  const totals = history.reduce((summary, attempt) => {
+    summary.correct += Number(attempt.correct) || 0;
+    summary.questions += Number(attempt.total) || 0;
+    Object.entries(attempt.topics || {}).forEach(([topic, stats]) => {
+      if (!summary.topics[topic]) summary.topics[topic] = { correct: 0, total: 0 };
+      summary.topics[topic].correct += Number(stats.correct) || 0;
+      summary.topics[topic].total += Number(stats.total) || 0;
+    });
+    return summary;
+  }, { correct: 0, questions: 0, topics: {} });
+
+  const topicRows = Object.entries(totals.topics).map(([name, stats]) => ({
+    name,
+    correct: stats.correct,
+    total: stats.total,
+    accuracy: stats.total ? Math.round((stats.correct / stats.total) * 100) : 0
+  })).sort((a, b) => b.accuracy - a.accuracy || b.total - a.total || a.name.localeCompare(b.name));
+
+  $('#attemptMetric').textContent = history.length;
+  $('#accuracyMetric').textContent = `${totals.questions ? Math.round((totals.correct / totals.questions) * 100) : 0}%`;
+  $('#strongestMetric').textContent = topicRows[0]?.name || '—';
+  $('#weakestMetric').textContent = topicRows[topicRows.length - 1]?.name || '—';
+
+  $('#topicList').innerHTML = topicRows.map(topic => `
+    <div class="topic-row">
+      <span class="topic-name" title="${escapeHtml(topic.name)}">${escapeHtml(topic.name)}</span>
+      <span class="topic-track" aria-label="${topic.accuracy}% accuracy"><span style="width:${topic.accuracy}%"></span></span>
+      <span class="topic-score">${topic.accuracy}%</span>
+    </div>`).join('');
+
+  $('#attemptList').innerHTML = history.slice(0, 5).map(attempt => {
+    const date = new Date(attempt.completedAt);
+    const label = Number.isNaN(date.getTime()) ? 'Previous attempt' : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    const accuracy = attempt.total ? Math.round((attempt.correct / attempt.total) * 100) : 0;
+    return `<div class="attempt-row"><span class="attempt-date">${escapeHtml(label)}</span><span class="attempt-score">${accuracy}% · ${attempt.correct}/${attempt.total}</span></div>`;
+  }).join('');
 }
 
 function escapeHtml(value) {
@@ -371,13 +471,59 @@ $('#nextQuestion').addEventListener('click', advance);
 $('#exitQuiz').addEventListener('click', () => showView(els.setup));
 $('#restartQuiz').addEventListener('click', () => showView(els.setup));
 $('#retryMissed').addEventListener('click', () => startQuiz(responses.filter(r => !r.correct).map(r => r.question)));
+$('#clearProgress').addEventListener('click', () => {
+  if (!window.confirm('Clear all saved Learnity progress? This cannot be undone.')) return;
+  localStorage.removeItem(HISTORY_KEY);
+  renderProgressDashboard();
+});
 
 document.addEventListener('keydown', event => {
-  if (!els.quiz.hidden && !answered && questions[current]?.type !== 'identification' && /^[1-9]$/.test(event.key)) {
-    els.answers.children[Number(event.key) - 1]?.click();
-  } else if (!els.quiz.hidden && answered && event.key === 'Enter') {
+  const target = event.target;
+  const isTyping = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
+
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !els.setup.hidden) {
     event.preventDefault();
-    advance();
+    $('#startQuiz').click();
+    return;
+  }
+
+  if (!isTyping && event.key.toLowerCase() === 't') {
+    event.preventDefault();
+    $('#themeToggle').click();
+    return;
+  }
+
+  if (els.quiz.hidden) return;
+
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    $('#exitQuiz').click();
+    return;
+  }
+
+  const item = questions[current];
+  if (!answered && item?.type !== 'identification' && !isTyping) {
+    const numericIndex = /^[1-9]$/.test(event.key) ? Number(event.key) - 1 : -1;
+    const letterIndex = /^[a-i]$/i.test(event.key) ? event.key.toLowerCase().charCodeAt(0) - 97 : -1;
+    const answerIndex = numericIndex >= 0 ? numericIndex : letterIndex;
+    if (answerIndex >= 0) {
+      event.preventDefault();
+      els.answers.querySelectorAll('.answer-button')[answerIndex]?.click();
+      return;
+    }
+  }
+
+  if (event.key === 'Enter' && !isTyping) {
+    if (answered) {
+      event.preventDefault();
+      advance();
+    } else if (item?.type === 'multiple') {
+      const checkButton = els.answers.querySelector('.check-button');
+      if (checkButton && !checkButton.disabled) {
+        event.preventDefault();
+        checkButton.click();
+      }
+    }
   }
 });
 
@@ -398,3 +544,4 @@ syncThemeButton();
 
 els.input.value = localStorage.getItem('learnityQuizText') || localStorage.getItem('practiceQuizText') || '';
 updateEstimate();
+renderProgressDashboard();
