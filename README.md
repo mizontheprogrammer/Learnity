@@ -1,10 +1,13 @@
-# Practice
+# Learnity
 
 A private, browser-based quiz maker. Paste questions, mark correct answers with `(SELECTED)`, and start practicing immediately.
 
 ## Features
 
 - Parses pasted multiple-choice questions
+- Supports matching questions with `Prompts:` and `Your Answer:`
+- Supports typed identification questions
+- Supports multi-select questions with multiple `(SELECTED)` answers
 - Immediate correct/incorrect feedback
 - Progress and score tracking
 - Retry missed questions
@@ -37,3 +40,7 @@ Answer Choices:
 ```
 
 Questions using `Your Answer: ...` are also recognized and converted into a practice question.
+
+For identification questions, omit `Answer Choices:` and provide only `Your Answer:`. The learner will type the response, which is checked without case sensitivity.
+
+For questions such as `Choose 4 choices` or `Choose four`, mark every correct choice with `(SELECTED)`. Learnity waits for the requested number of selections and grades them only after the learner presses **Check selected answers**. Multi-answer lines such as `Your Answer: B, C, E, G` are also supported.
