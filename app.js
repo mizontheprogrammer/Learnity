@@ -82,6 +82,30 @@ let score = 0;
 let responses = [];
 let answered = false;
 
+function safeGetItem(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSetItem(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // The quiz remains usable when browser storage is unavailable.
+  }
+}
+
+function safeRemoveItem(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Nothing to clear when browser storage is unavailable.
+  }
+}
+
 function normalize(text) {
   return text.replace(/\r/g, '').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").trim();
 }
@@ -369,7 +393,7 @@ function showResults() {
 
 function getProgressHistory() {
   try {
-    const saved = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    const saved = JSON.parse(safeGetItem(HISTORY_KEY) || '[]');
     return Array.isArray(saved) ? saved : [];
   } catch {
     return [];
@@ -392,7 +416,7 @@ function saveProgressAttempt() {
     total: questions.length,
     topics: topicStats
   });
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 50)));
+  safeSetItem(HISTORY_KEY, JSON.stringify(history.slice(0, 50)));
   renderProgressDashboard();
 }
 
@@ -464,7 +488,7 @@ $('#startQuiz').addEventListener('click', () => {
   els.error.hidden = true;
   if ($('#shuffleAnswers').checked) parsed = parsed.map(q => ({ ...q, choices: shuffle(q.choices) }));
   if ($('#shuffleQuestions').checked) parsed = shuffle(parsed);
-  localStorage.setItem('learnityQuizText', els.input.value);
+  safeSetItem('learnityQuizText', els.input.value);
   startQuiz(parsed);
 });
 $('#nextQuestion').addEventListener('click', advance);
@@ -473,7 +497,7 @@ $('#restartQuiz').addEventListener('click', () => showView(els.setup));
 $('#retryMissed').addEventListener('click', () => startQuiz(responses.filter(r => !r.correct).map(r => r.question)));
 $('#clearProgress').addEventListener('click', () => {
   if (!window.confirm('Clear all saved Learnity progress? This cannot be undone.')) return;
-  localStorage.removeItem(HISTORY_KEY);
+  safeRemoveItem(HISTORY_KEY);
   renderProgressDashboard();
 });
 
@@ -527,7 +551,7 @@ document.addEventListener('keydown', event => {
   }
 });
 
-const savedTheme = localStorage.getItem('learnityTheme') || localStorage.getItem('practiceTheme');
+const savedTheme = safeGetItem('learnityTheme') || safeGetItem('practiceTheme');
 if (savedTheme === 'dark') document.documentElement.dataset.theme = 'dark';
 function syncThemeButton() {
   const dark = document.documentElement.dataset.theme === 'dark';
@@ -538,11 +562,11 @@ function syncThemeButton() {
 $('#themeToggle').addEventListener('click', () => {
   const dark = document.documentElement.dataset.theme === 'dark';
   document.documentElement.dataset.theme = dark ? '' : 'dark';
-  localStorage.setItem('learnityTheme', dark ? 'light' : 'dark');
+  safeSetItem('learnityTheme', dark ? 'light' : 'dark');
   syncThemeButton();
 });
 syncThemeButton();
 
-els.input.value = localStorage.getItem('learnityQuizText') || localStorage.getItem('practiceQuizText') || '';
+els.input.value = safeGetItem('learnityQuizText') || safeGetItem('practiceQuizText') || '';
 updateEstimate();
 renderProgressDashboard();
