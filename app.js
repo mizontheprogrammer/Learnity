@@ -457,7 +457,7 @@ function renderProgressDashboard() {
   $('#topicList').innerHTML = topicRows.map(topic => `
     <div class="topic-row">
       <span class="topic-name" title="${escapeHtml(topic.name)}">${escapeHtml(topic.name)}</span>
-      <span class="topic-track" aria-label="${topic.accuracy}% accuracy"><span style="width:${topic.accuracy}%"></span></span>
+      <span class="topic-track" role="progressbar" aria-label="${escapeHtml(topic.name)} accuracy" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${topic.accuracy}"><span style="width:${topic.accuracy}%"></span></span>
       <span class="topic-score">${topic.accuracy}%</span>
     </div>`).join('');
 
