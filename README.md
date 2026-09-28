@@ -10,6 +10,7 @@ A private, browser-based quiz maker. Paste questions, mark correct answers with 
 - Supports multi-select questions with multiple `(SELECTED)` answers
 - Immediate correct/incorrect feedback
 - Progress and score tracking
+- Persistent study dashboard with attempts, accuracy, and topic performance
 - Retry missed questions
 - Shuffle questions and answers
 - Keyboard shortcuts and accessible focus states
@@ -31,6 +32,7 @@ Then visit `http://localhost:8000`.
 
 ```text
 Question 1
+Topic: Web Development
 What does MVC stand for?
 Answer Choices:
  A. Model View Controller (SELECTED)
@@ -38,6 +40,8 @@ Answer Choices:
  C. Multiple View Connection
  D. Model Version Control
 ```
+
+The optional `Topic:` line groups results in the progress dashboard. Questions without a topic are grouped under `General`.
 
 Questions using `Your Answer: ...` are also recognized and converted into a practice question.
 
