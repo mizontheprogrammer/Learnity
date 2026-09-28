@@ -533,6 +533,7 @@ function syncThemeButton() {
   const dark = document.documentElement.dataset.theme === 'dark';
   $('#themeToggle').setAttribute('aria-pressed', dark);
   $('#themeToggle').setAttribute('aria-label', `Switch to ${dark ? 'light' : 'dark'} theme`);
+  $('#themeColor').setAttribute('content', dark ? '#0e1218' : '#f7f9f3');
 }
 $('#themeToggle').addEventListener('click', () => {
   const dark = document.documentElement.dataset.theme === 'dark';
