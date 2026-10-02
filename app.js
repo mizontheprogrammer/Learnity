@@ -221,6 +221,19 @@ function showView(view) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+function switchWorkspace(panelName) {
+  showView(els.setup);
+  document.querySelectorAll('[data-workspace-panel]').forEach(panel => {
+    panel.hidden = panel.dataset.workspacePanel !== panelName;
+  });
+  document.querySelectorAll('.nav-tab').forEach(tab => {
+    const active = tab.dataset.panel === panelName;
+    tab.classList.toggle('active', active);
+    if (active) tab.setAttribute('aria-current', 'page');
+    else tab.removeAttribute('aria-current');
+  });
+}
+
 function startQuiz(questionSet) {
   questions = questionSet;
   current = 0;
@@ -568,6 +581,7 @@ function saveCurrentQuiz() {
   $('#librarySearch').value = '';
   showLibraryMessage(existing ? 'Saved quiz updated.' : 'Quiz saved to your library.');
   renderQuizLibrary('');
+  switchWorkspace('library');
 }
 
 $('#loadSample').addEventListener('click', () => { els.input.value = sampleQuiz; updateEstimate(); els.input.focus(); });
@@ -585,10 +599,14 @@ $('#startQuiz').addEventListener('click', () => {
   startQuiz(parsed);
 });
 $('#nextQuestion').addEventListener('click', advance);
-$('#exitQuiz').addEventListener('click', () => showView(els.setup));
-$('#restartQuiz').addEventListener('click', () => showView(els.setup));
+$('#exitQuiz').addEventListener('click', () => switchWorkspace('create'));
+$('#restartQuiz').addEventListener('click', () => switchWorkspace('create'));
 $('#retryMissed').addEventListener('click', () => startQuiz(responses.filter(r => !r.correct).map(r => r.question)));
 $('#saveQuiz').addEventListener('click', saveCurrentQuiz);
+$('#saveQuizShortcut').addEventListener('click', () => {
+  switchWorkspace('library');
+  $('#quizName').focus();
+});
 $('#quizName').addEventListener('keydown', event => {
   if (event.key === 'Enter') {
     event.preventDefault();
@@ -608,6 +626,7 @@ $('#libraryGrid').addEventListener('click', event => {
     $('#quizName').value = quiz.name;
     updateEstimate();
     safeSetItem('learnityQuizText', quiz.content);
+    switchWorkspace('create');
     document.querySelector('.import-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
     showLibraryMessage(`Opened “${quiz.name}”.`);
   } else if (event.target.closest('.practice-quiz')) {
@@ -627,6 +646,13 @@ $('#libraryGrid').addEventListener('click', event => {
     showLibraryMessage('Quiz deleted.');
     renderQuizLibrary();
   }
+});
+document.querySelectorAll('.nav-tab').forEach(tab => {
+  tab.addEventListener('click', () => switchWorkspace(tab.dataset.panel));
+});
+$('.brand').addEventListener('click', event => {
+  event.preventDefault();
+  switchWorkspace('create');
 });
 $('#clearProgress').addEventListener('click', () => {
   if (!window.confirm('Clear all saved Learnity progress? This cannot be undone.')) return;
