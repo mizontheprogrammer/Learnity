@@ -82,6 +82,7 @@ let current = 0;
 let score = 0;
 let responses = [];
 let answered = false;
+let activeLibrarySubject = null;
 
 function safeGetItem(key) {
   try {
@@ -515,70 +516,131 @@ function showLibraryMessage(message, isError = false) {
   element.style.background = isError ? 'var(--danger-soft)' : '';
 }
 
+function quizCardMarkup(quiz, showSubject = false) {
+  const parsed = parseQuiz(quiz.content);
+  const topics = [...new Set(parsed.map(question => question.topic || 'General'))];
+  const updated = new Date(quiz.updatedAt);
+  const dateLabel = Number.isNaN(updated.getTime()) ? 'Saved quiz' : `Updated ${updated.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  const detail = showSubject ? quiz.subject : topics.join(' · ');
+  return `<article class="library-card" data-quiz-id="${quiz.id}">
+    <h3 title="${escapeHtml(quiz.name)}">${escapeHtml(quiz.name)}</h3>
+    <p class="library-meta">${parsed.length} question${parsed.length === 1 ? '' : 's'} · ${escapeHtml(dateLabel)}</p>
+    <p class="library-topics" title="${escapeHtml(detail)}">${escapeHtml(detail)}</p>
+    <div class="library-actions">
+      <button class="secondary-button open-quiz" type="button">Open</button>
+      <button class="primary-button practice-quiz" type="button">Practice</button>
+      <button class="delete-quiz" type="button" aria-label="Delete ${escapeHtml(quiz.name)}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg>
+      </button>
+    </div>
+  </article>`;
+}
+
 function renderQuizLibrary(filter = $('#librarySearch').value) {
-  const quizzes = getSavedQuizzes();
+  const quizzes = getSavedQuizzes().map(quiz => ({ ...quiz, subject: quiz.subject?.trim() || 'General' }));
   const query = filter.trim().toLowerCase();
-  const visible = quizzes.filter(quiz => quiz.name.toLowerCase().includes(query));
   const empty = $('#libraryEmpty');
   const grid = $('#libraryGrid');
-  $('#libraryCount').textContent = `${quizzes.length} saved`;
-  empty.hidden = visible.length > 0;
-  grid.hidden = visible.length === 0;
-  empty.textContent = quizzes.length && query
-    ? 'No saved quizzes match your search.'
-    : 'Your saved quizzes will appear here. Paste a quiz above, give it a name, and save it.';
+  const subjects = [...new Set(quizzes.map(quiz => quiz.subject))].sort((a, b) => a.localeCompare(b));
+  $('#libraryCount').textContent = `${quizzes.length} quiz${quizzes.length === 1 ? '' : 'zes'} · ${subjects.length} subject${subjects.length === 1 ? '' : 's'}`;
+  $('#libraryBack').hidden = !activeLibrarySubject && !query;
 
-  grid.innerHTML = visible.map(quiz => {
-    const parsed = parseQuiz(quiz.content);
-    const topics = [...new Set(parsed.map(question => question.topic || 'General'))];
-    const updated = new Date(quiz.updatedAt);
-    const dateLabel = Number.isNaN(updated.getTime()) ? 'Saved quiz' : `Updated ${updated.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
-    return `<article class="library-card" data-quiz-id="${quiz.id}">
-      <h3 title="${escapeHtml(quiz.name)}">${escapeHtml(quiz.name)}</h3>
-      <p class="library-meta">${parsed.length} question${parsed.length === 1 ? '' : 's'} · ${escapeHtml(dateLabel)}</p>
-      <p class="library-topics" title="${escapeHtml(topics.join(', '))}">${escapeHtml(topics.join(' · '))}</p>
-      <div class="library-actions">
-        <button class="secondary-button open-quiz" type="button">Open</button>
-        <button class="primary-button practice-quiz" type="button">Practice</button>
-        <button class="delete-quiz" type="button" aria-label="Delete ${escapeHtml(quiz.name)}">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg>
-        </button>
-      </div>
-    </article>`;
-  }).join('');
+  let markup = '';
+  if (query) {
+    const matches = quizzes.filter(quiz => quiz.name.toLowerCase().includes(query) || quiz.subject.toLowerCase().includes(query));
+    $('#libraryTitle').textContent = 'Search results';
+    markup = matches.map(quiz => quizCardMarkup(quiz, true)).join('');
+    empty.textContent = 'No subjects or quizzes match your search.';
+  } else if (activeLibrarySubject) {
+    const subjectQuizzes = quizzes.filter(quiz => quiz.subject === activeLibrarySubject);
+    $('#libraryTitle').textContent = activeLibrarySubject;
+    markup = subjectQuizzes.map(quiz => quizCardMarkup(quiz)).join('');
+    empty.textContent = 'This subject has no saved quizzes yet.';
+  } else {
+    $('#libraryTitle').textContent = 'My subjects';
+    markup = subjects.map(subject => {
+      const count = quizzes.filter(quiz => quiz.subject === subject).length;
+      return `<button class="subject-card" type="button" data-subject="${escapeHtml(subject)}">
+        <span class="subject-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3Z"/><path d="M3 7V5h7l2 2"/></svg></span>
+        <h3>${escapeHtml(subject)}</h3>
+        <p>${count} quiz${count === 1 ? '' : 'zes'}</p>
+      </button>`;
+    }).join('');
+    empty.textContent = 'Your subjects will appear here after you save a quiz.';
+  }
+
+  empty.hidden = Boolean(markup);
+  grid.hidden = !markup;
+  grid.innerHTML = markup;
+}
+
+function openSaveModal() {
+  const parsed = parseQuiz(els.input.value);
+  if (!parsed.length) {
+    els.error.textContent = 'Paste at least one complete question before saving it.';
+    els.error.hidden = false;
+    els.input.focus();
+    return;
+  }
+  const subjects = [...new Set(getSavedQuizzes().map(quiz => quiz.subject?.trim() || 'General'))].sort((a, b) => a.localeCompare(b));
+  $('#subjectSuggestions').innerHTML = subjects.map(subject => `<option value="${escapeHtml(subject)}"></option>`).join('');
+  $('#saveModalError').hidden = true;
+  $('#saveQuizModal').hidden = false;
+  document.body.classList.add('modal-open');
+  ($('#quizSubject').value.trim() ? $('#quizName') : $('#quizSubject')).focus();
+}
+
+function closeSaveModal(restoreFocus = true) {
+  $('#saveQuizModal').hidden = true;
+  document.body.classList.remove('modal-open');
+  if (restoreFocus) $('#saveQuizShortcut').focus();
 }
 
 function saveCurrentQuiz() {
   const name = $('#quizName').value.trim();
+  const subject = $('#quizSubject').value.trim();
   const content = els.input.value.trim();
   const parsed = parseQuiz(content);
+  const modalError = $('#saveModalError');
+  if (!subject) {
+    modalError.textContent = 'Enter a subject name, such as Networking.';
+    modalError.hidden = false;
+    $('#quizSubject').focus();
+    return;
+  }
   if (!name) {
-    showLibraryMessage('Give this quiz a name before saving it.', true);
+    modalError.textContent = 'Give this quiz a name, such as Formative 1.';
+    modalError.hidden = false;
     $('#quizName').focus();
     return;
   }
   if (!parsed.length) {
-    showLibraryMessage('Paste at least one complete question before saving.', true);
-    els.input.focus();
+    modalError.textContent = 'The current quiz does not contain a complete question.';
+    modalError.hidden = false;
     return;
   }
 
   const quizzes = getSavedQuizzes();
-  const existing = quizzes.find(quiz => quiz.name.toLowerCase() === name.toLowerCase());
+  const existing = quizzes.find(quiz => (quiz.subject?.trim() || 'General').toLowerCase() === subject.toLowerCase() && quiz.name.toLowerCase() === name.toLowerCase());
   if (existing && !window.confirm(`Replace the saved quiz “${existing.name}”?`)) return;
   const savedQuiz = {
     id: existing?.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name,
+    subject,
     content,
     updatedAt: new Date().toISOString()
   };
   const next = existing ? quizzes.map(quiz => quiz.id === existing.id ? savedQuiz : quiz) : [savedQuiz, ...quizzes];
   if (!safeSetItem(LIBRARY_KEY, JSON.stringify(next))) {
-    showLibraryMessage('This browser could not save the quiz. Check whether site storage is allowed.', true);
+    modalError.textContent = 'This browser could not save the quiz. Check whether site storage is allowed.';
+    modalError.hidden = false;
     return;
   }
   $('#quizName').value = '';
+  $('#quizSubject').value = '';
   $('#librarySearch').value = '';
+  closeSaveModal(false);
+  activeLibrarySubject = subject;
   showLibraryMessage(existing ? 'Saved quiz updated.' : 'Quiz saved to your library.');
   renderQuizLibrary('');
   switchWorkspace('library');
@@ -603,9 +665,17 @@ $('#exitQuiz').addEventListener('click', () => switchWorkspace('create'));
 $('#restartQuiz').addEventListener('click', () => switchWorkspace('create'));
 $('#retryMissed').addEventListener('click', () => startQuiz(responses.filter(r => !r.correct).map(r => r.question)));
 $('#saveQuiz').addEventListener('click', saveCurrentQuiz);
-$('#saveQuizShortcut').addEventListener('click', () => {
-  switchWorkspace('library');
-  $('#quizName').focus();
+$('#saveQuizShortcut').addEventListener('click', openSaveModal);
+$('#closeSaveModal').addEventListener('click', closeSaveModal);
+$('#cancelSaveQuiz').addEventListener('click', closeSaveModal);
+$('#saveQuizModal').addEventListener('click', event => {
+  if (event.target === $('#saveQuizModal')) closeSaveModal();
+});
+$('#quizSubject').addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    $('#quizName').focus();
+  }
 });
 $('#quizName').addEventListener('keydown', event => {
   if (event.key === 'Enter') {
@@ -614,7 +684,18 @@ $('#quizName').addEventListener('keydown', event => {
   }
 });
 $('#librarySearch').addEventListener('input', event => renderQuizLibrary(event.target.value));
+$('#libraryBack').addEventListener('click', () => {
+  activeLibrarySubject = null;
+  $('#librarySearch').value = '';
+  renderQuizLibrary('');
+});
 $('#libraryGrid').addEventListener('click', event => {
+  const subjectCard = event.target.closest('.subject-card');
+  if (subjectCard) {
+    activeLibrarySubject = subjectCard.dataset.subject;
+    renderQuizLibrary('');
+    return;
+  }
   const card = event.target.closest('.library-card');
   if (!card) return;
   const quizzes = getSavedQuizzes();
@@ -624,6 +705,7 @@ $('#libraryGrid').addEventListener('click', event => {
   if (event.target.closest('.open-quiz')) {
     els.input.value = quiz.content;
     $('#quizName').value = quiz.name;
+    $('#quizSubject').value = quiz.subject?.trim() || 'General';
     updateEstimate();
     safeSetItem('learnityQuizText', quiz.content);
     switchWorkspace('create');
@@ -661,6 +743,11 @@ $('#clearProgress').addEventListener('click', () => {
 });
 
 document.addEventListener('keydown', event => {
+  if (!$('#saveQuizModal').hidden && event.key === 'Escape') {
+    event.preventDefault();
+    closeSaveModal();
+    return;
+  }
   const target = event.target;
   const isTyping = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
 
