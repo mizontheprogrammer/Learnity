@@ -69,6 +69,7 @@ Answer Choices:
 const $ = (selector) => document.querySelector(selector);
 const HISTORY_KEY = 'learnityProgressHistory';
 const LIBRARY_KEY = 'learnityQuizLibrary';
+const SUBJECT_COLORS = ['#2f8f63', '#8b6bd9', '#3f8fc5', '#d9823f', '#cb5b7c', '#2a9d8f'];
 const els = {
   setup: $('#setupView'), quiz: $('#quizView'), results: $('#resultsView'), input: $('#quizInput'),
   estimate: $('#questionEstimate'), error: $('#parseError'), questionText: $('#questionText'),
@@ -508,6 +509,22 @@ function getSavedQuizzes() {
   }
 }
 
+function fallbackSubjectColor(subject) {
+  const hash = [...subject].reduce((total, character) => total + character.charCodeAt(0), 0);
+  return SUBJECT_COLORS[hash % SUBJECT_COLORS.length];
+}
+
+function subjectColor(subject, quizzes = getSavedQuizzes()) {
+  const savedColor = quizzes.find(quiz => (quiz.subject?.trim() || 'General') === subject && SUBJECT_COLORS.includes(quiz.color))?.color;
+  return SUBJECT_COLORS.includes(savedColor) ? savedColor : fallbackSubjectColor(subject);
+}
+
+function selectSubjectColor(color) {
+  const safeColor = SUBJECT_COLORS.includes(color) ? color : SUBJECT_COLORS[0];
+  const input = document.querySelector(`input[name="subjectColor"][value="${safeColor}"]`);
+  if (input) input.checked = true;
+}
+
 function showLibraryMessage(message, isError = false) {
   const element = $('#libraryMessage');
   element.textContent = message;
@@ -522,16 +539,20 @@ function quizCardMarkup(quiz, showSubject = false) {
   const updated = new Date(quiz.updatedAt);
   const dateLabel = Number.isNaN(updated.getTime()) ? 'Saved quiz' : `Updated ${updated.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
   const detail = showSubject ? quiz.subject : topics.join(' · ');
-  return `<article class="library-card" data-quiz-id="${quiz.id}">
-    <h3 title="${escapeHtml(quiz.name)}">${escapeHtml(quiz.name)}</h3>
-    <p class="library-meta">${parsed.length} question${parsed.length === 1 ? '' : 's'} · ${escapeHtml(dateLabel)}</p>
-    <p class="library-topics" title="${escapeHtml(detail)}">${escapeHtml(detail)}</p>
-    <div class="library-actions">
-      <button class="secondary-button open-quiz" type="button">Open</button>
-      <button class="primary-button practice-quiz" type="button">Practice</button>
-      <button class="delete-quiz" type="button" aria-label="Delete ${escapeHtml(quiz.name)}">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg>
-      </button>
+  const color = subjectColor(quiz.subject || 'General');
+  return `<article class="library-card" data-quiz-id="${quiz.id}" style="--card-accent:${color}">
+    <span class="library-card-accent" aria-hidden="true"></span>
+    <div class="library-card-body">
+      <h3 title="${escapeHtml(quiz.name)}">${escapeHtml(quiz.name)}</h3>
+      <p class="library-meta">${parsed.length} question${parsed.length === 1 ? '' : 's'} · ${escapeHtml(dateLabel)}</p>
+      <p class="library-topics" title="${escapeHtml(detail)}">${escapeHtml(detail)}</p>
+      <div class="library-actions">
+        <button class="secondary-button open-quiz" type="button">Open</button>
+        <button class="primary-button practice-quiz" type="button">Practice</button>
+        <button class="delete-quiz" type="button" aria-label="Delete ${escapeHtml(quiz.name)}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg>
+        </button>
+      </div>
     </div>
   </article>`;
 }
@@ -559,11 +580,15 @@ function renderQuizLibrary(filter = $('#librarySearch').value) {
   } else {
     $('#libraryTitle').textContent = 'My subjects';
     markup = subjects.map(subject => {
-      const count = quizzes.filter(quiz => quiz.subject === subject).length;
-      return `<button class="subject-card" type="button" data-subject="${escapeHtml(subject)}">
-        <span class="subject-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3Z"/><path d="M3 7V5h7l2 2"/></svg></span>
-        <h3>${escapeHtml(subject)}</h3>
-        <p>${count} quiz${count === 1 ? '' : 'zes'}</p>
+      const subjectQuizzes = quizzes.filter(quiz => quiz.subject === subject);
+      const questionCount = subjectQuizzes.reduce((total, quiz) => total + parseQuiz(quiz.content).length, 0);
+      const color = subjectColor(subject, quizzes);
+      return `<button class="subject-card" type="button" data-subject="${escapeHtml(subject)}" style="--card-accent:${color}">
+        <span class="subject-card-accent" aria-hidden="true"></span>
+        <span class="subject-card-body">
+          <h3>${escapeHtml(subject)}</h3>
+          <p>${subjectQuizzes.length} quiz${subjectQuizzes.length === 1 ? '' : 'zes'} · ${questionCount} questions</p>
+        </span>
       </button>`;
     }).join('');
     empty.textContent = 'Your subjects will appear here after you save a quiz.';
@@ -585,6 +610,8 @@ function openSaveModal() {
   const subjects = [...new Set(getSavedQuizzes().map(quiz => quiz.subject?.trim() || 'General'))].sort((a, b) => a.localeCompare(b));
   $('#subjectSuggestions').innerHTML = subjects.map(subject => `<option value="${escapeHtml(subject)}"></option>`).join('');
   $('#saveModalError').hidden = true;
+  const currentSubject = $('#quizSubject').value.trim();
+  selectSubjectColor(currentSubject ? subjectColor(currentSubject) : SUBJECT_COLORS[0]);
   $('#saveQuizModal').hidden = false;
   document.body.classList.add('modal-open');
   ($('#quizSubject').value.trim() ? $('#quizName') : $('#quizSubject')).focus();
@@ -621,12 +648,16 @@ function saveCurrentQuiz() {
   }
 
   const quizzes = getSavedQuizzes();
+  const existingSubjectColor = quizzes.find(quiz => (quiz.subject?.trim() || 'General').toLowerCase() === subject.toLowerCase() && SUBJECT_COLORS.includes(quiz.color))?.color;
+  const chosenColor = document.querySelector('input[name="subjectColor"]:checked')?.value;
+  const color = SUBJECT_COLORS.includes(existingSubjectColor) ? existingSubjectColor : (SUBJECT_COLORS.includes(chosenColor) ? chosenColor : fallbackSubjectColor(subject));
   const existing = quizzes.find(quiz => (quiz.subject?.trim() || 'General').toLowerCase() === subject.toLowerCase() && quiz.name.toLowerCase() === name.toLowerCase());
   if (existing && !window.confirm(`Replace the saved quiz “${existing.name}”?`)) return;
   const savedQuiz = {
     id: existing?.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name,
     subject,
+    color,
     content,
     updatedAt: new Date().toISOString()
   };
@@ -677,6 +708,10 @@ $('#quizSubject').addEventListener('keydown', event => {
     $('#quizName').focus();
   }
 });
+$('#quizSubject').addEventListener('change', event => {
+  const subject = event.target.value.trim();
+  if (subject) selectSubjectColor(subjectColor(subject));
+});
 $('#quizName').addEventListener('keydown', event => {
   if (event.key === 'Enter') {
     event.preventDefault();
@@ -706,6 +741,7 @@ $('#libraryGrid').addEventListener('click', event => {
     els.input.value = quiz.content;
     $('#quizName').value = quiz.name;
     $('#quizSubject').value = quiz.subject?.trim() || 'General';
+    selectSubjectColor(subjectColor(quiz.subject?.trim() || 'General', quizzes));
     updateEstimate();
     safeSetItem('learnityQuizText', quiz.content);
     switchWorkspace('create');

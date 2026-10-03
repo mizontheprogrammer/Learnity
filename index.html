@@ -7,7 +7,7 @@
   <meta name="theme-color" id="themeColor" content="#f7f9f3">
   <title>Learnity — Learn by doing</title>
   <link rel="icon" type="image/png" href="assets/learnity-logo-transparent.png">
-  <link rel="stylesheet" href="styles.css?v=subjects-1">
+  <link rel="stylesheet" href="styles.css?v=deck-cards-1">
 </head>
 <body>
   <div class="ambient ambient-one" aria-hidden="true"></div>
@@ -184,6 +184,15 @@
         <datalist id="subjectSuggestions"></datalist>
         <label for="quizName">Quiz name</label>
         <input id="quizName" type="text" maxlength="60" placeholder="e.g. Formative 1" autocomplete="off">
+        <fieldset class="color-picker">
+          <legend>Subject color</legend>
+          <label><input type="radio" name="subjectColor" value="#2f8f63" checked><span style="--swatch:#2f8f63"></span><span class="sr-only">Green</span></label>
+          <label><input type="radio" name="subjectColor" value="#8b6bd9"><span style="--swatch:#8b6bd9"></span><span class="sr-only">Purple</span></label>
+          <label><input type="radio" name="subjectColor" value="#3f8fc5"><span style="--swatch:#3f8fc5"></span><span class="sr-only">Blue</span></label>
+          <label><input type="radio" name="subjectColor" value="#d9823f"><span style="--swatch:#d9823f"></span><span class="sr-only">Orange</span></label>
+          <label><input type="radio" name="subjectColor" value="#cb5b7c"><span style="--swatch:#cb5b7c"></span><span class="sr-only">Rose</span></label>
+          <label><input type="radio" name="subjectColor" value="#2a9d8f"><span style="--swatch:#2a9d8f"></span><span class="sr-only">Teal</span></label>
+        </fieldset>
       </div>
       <p class="modal-error" id="saveModalError" role="alert" hidden></p>
       <div class="modal-actions">
@@ -193,6 +202,6 @@
     </section>
   </div>
 
-  <script src="app.js?v=subjects-1"></script>
+  <script src="app.js?v=deck-cards-1"></script>
 </body>
 </html>
