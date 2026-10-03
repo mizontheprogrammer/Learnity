@@ -69,6 +69,7 @@ Answer Choices:
 const $ = (selector) => document.querySelector(selector);
 const HISTORY_KEY = 'learnityProgressHistory';
 const LIBRARY_KEY = 'learnityQuizLibrary';
+const SUBJECTS_KEY = 'learnitySubjects';
 const SUBJECT_COLORS = ['#2f8f63', '#8b6bd9', '#3f8fc5', '#d9823f', '#cb5b7c', '#2a9d8f'];
 const els = {
   setup: $('#setupView'), quiz: $('#quizView'), results: $('#resultsView'), input: $('#quizInput'),
@@ -84,6 +85,8 @@ let score = 0;
 let responses = [];
 let answered = false;
 let activeLibrarySubject = null;
+let activeQuizId = null;
+let libraryModalMode = 'deck';
 
 function safeGetItem(key) {
   try {
@@ -514,9 +517,42 @@ function fallbackSubjectColor(subject) {
   return SUBJECT_COLORS[hash % SUBJECT_COLORS.length];
 }
 
+function getSavedSubjects() {
+  let stored = [];
+  try {
+    const parsed = JSON.parse(safeGetItem(SUBJECTS_KEY) || '[]');
+    if (Array.isArray(parsed)) stored = parsed;
+  } catch {
+    stored = [];
+  }
+
+  const subjects = stored
+    .filter(subject => subject && typeof subject.name === 'string' && subject.name.trim())
+    .map(subject => ({
+      id: subject.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: subject.name.trim(),
+      color: SUBJECT_COLORS.includes(subject.color) ? subject.color : fallbackSubjectColor(subject.name.trim()),
+      createdAt: subject.createdAt || new Date().toISOString()
+    }));
+
+  getSavedQuizzes().forEach(quiz => {
+    const name = quiz.subject?.trim() || 'General';
+    if (subjects.some(subject => subject.name.toLowerCase() === name.toLowerCase())) return;
+    subjects.push({
+      id: `migrated-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      name,
+      color: SUBJECT_COLORS.includes(quiz.color) ? quiz.color : fallbackSubjectColor(name),
+      createdAt: quiz.updatedAt || new Date().toISOString()
+    });
+  });
+
+  return subjects.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function subjectColor(subject, quizzes = getSavedQuizzes()) {
-  const savedColor = quizzes.find(quiz => (quiz.subject?.trim() || 'General') === subject && SUBJECT_COLORS.includes(quiz.color))?.color;
-  return SUBJECT_COLORS.includes(savedColor) ? savedColor : fallbackSubjectColor(subject);
+  const deckColor = getSavedSubjects().find(deck => deck.name.toLowerCase() === subject.toLowerCase())?.color;
+  const savedColor = quizzes.find(quiz => (quiz.subject?.trim() || 'General').toLowerCase() === subject.toLowerCase() && SUBJECT_COLORS.includes(quiz.color))?.color;
+  return SUBJECT_COLORS.includes(deckColor) ? deckColor : (SUBJECT_COLORS.includes(savedColor) ? savedColor : fallbackSubjectColor(subject));
 }
 
 function selectSubjectColor(color) {
@@ -540,15 +576,16 @@ function quizCardMarkup(quiz, showSubject = false) {
   const dateLabel = Number.isNaN(updated.getTime()) ? 'Saved quiz' : `Updated ${updated.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
   const detail = showSubject ? quiz.subject : topics.join(' · ');
   const color = subjectColor(quiz.subject || 'General');
-  return `<article class="library-card" data-quiz-id="${quiz.id}" style="--card-accent:${color}">
+  const canPractice = parsed.length > 0;
+  return `<article class="library-card" data-quiz-id="${quiz.id}" style="--card-accent:${color}" tabindex="0">
     <span class="library-card-accent" aria-hidden="true"></span>
     <div class="library-card-body">
       <h3 title="${escapeHtml(quiz.name)}">${escapeHtml(quiz.name)}</h3>
       <p class="library-meta">${parsed.length} question${parsed.length === 1 ? '' : 's'} · ${escapeHtml(dateLabel)}</p>
       <p class="library-topics" title="${escapeHtml(detail)}">${escapeHtml(detail)}</p>
       <div class="library-actions">
-        <button class="secondary-button open-quiz" type="button">Open</button>
-        <button class="primary-button practice-quiz" type="button">Practice</button>
+        <button class="secondary-button open-quiz" type="button">Edit questions</button>
+        <button class="primary-button practice-quiz" type="button" ${canPractice ? '' : 'disabled'}>${canPractice ? 'Practice' : 'Add questions first'}</button>
         <button class="delete-quiz" type="button" aria-label="Delete ${escapeHtml(quiz.name)}">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg>
         </button>
@@ -557,41 +594,49 @@ function quizCardMarkup(quiz, showSubject = false) {
   </article>`;
 }
 
+function subjectCardMarkup(subject, quizzes) {
+  const subjectQuizzes = quizzes.filter(quiz => quiz.subject.toLowerCase() === subject.name.toLowerCase());
+  const questionCount = subjectQuizzes.reduce((total, quiz) => total + parseQuiz(quiz.content).length, 0);
+  return `<button class="subject-card" type="button" data-subject="${escapeHtml(subject.name)}" style="--card-accent:${subject.color}">
+    <span class="subject-card-accent" aria-hidden="true"></span>
+    <span class="subject-card-body">
+      <span class="deck-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v9H4V7Z"/></svg></span>
+      <span><h3>${escapeHtml(subject.name)}</h3><p>${subjectQuizzes.length} quiz${subjectQuizzes.length === 1 ? '' : 'zes'} · ${questionCount} questions</p></span>
+      <svg class="deck-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+    </span>
+  </button>`;
+}
+
 function renderQuizLibrary(filter = $('#librarySearch').value) {
   const quizzes = getSavedQuizzes().map(quiz => ({ ...quiz, subject: quiz.subject?.trim() || 'General' }));
+  const subjects = getSavedSubjects();
   const query = filter.trim().toLowerCase();
   const empty = $('#libraryEmpty');
   const grid = $('#libraryGrid');
-  const subjects = [...new Set(quizzes.map(quiz => quiz.subject))].sort((a, b) => a.localeCompare(b));
-  $('#libraryCount').textContent = `${quizzes.length} quiz${quizzes.length === 1 ? '' : 'zes'} · ${subjects.length} subject${subjects.length === 1 ? '' : 's'}`;
+  $('#libraryCount').textContent = `${subjects.length} deck${subjects.length === 1 ? '' : 's'} · ${quizzes.length} quiz${quizzes.length === 1 ? '' : 'zes'}`;
   $('#libraryBack').hidden = !activeLibrarySubject && !query;
+  $('#createDeck').hidden = Boolean(activeLibrarySubject) || Boolean(query);
+  $('#addQuizToSubject').hidden = !activeLibrarySubject || Boolean(query);
 
   let markup = '';
   if (query) {
     const matches = quizzes.filter(quiz => quiz.name.toLowerCase().includes(query) || quiz.subject.toLowerCase().includes(query));
+    const deckMatches = subjects.filter(subject => subject.name.toLowerCase().includes(query));
     $('#libraryTitle').textContent = 'Search results';
-    markup = matches.map(quiz => quizCardMarkup(quiz, true)).join('');
-    empty.textContent = 'No subjects or quizzes match your search.';
+    $('#librarySubtitle').textContent = 'Matching decks and quizzes from your collection.';
+    markup = deckMatches.map(subject => subjectCardMarkup(subject, quizzes)).join('') + matches.map(quiz => quizCardMarkup(quiz, true)).join('');
+    empty.innerHTML = '<strong>No matches found.</strong><span>Try another deck or quiz name.</span>';
   } else if (activeLibrarySubject) {
-    const subjectQuizzes = quizzes.filter(quiz => quiz.subject === activeLibrarySubject);
+    const subjectQuizzes = quizzes.filter(quiz => quiz.subject.toLowerCase() === activeLibrarySubject.toLowerCase());
     $('#libraryTitle').textContent = activeLibrarySubject;
+    $('#librarySubtitle').textContent = 'Choose a quiz to edit its questions or start practicing.';
     markup = subjectQuizzes.map(quiz => quizCardMarkup(quiz)).join('');
-    empty.textContent = 'This subject has no saved quizzes yet.';
+    empty.innerHTML = '<strong>This deck is empty.</strong><span>Add Formative 1, Summative 1, or any quiz you want to practice.</span><button class="primary-button empty-add-quiz" type="button">Add your first quiz</button>';
   } else {
-    $('#libraryTitle').textContent = 'My subjects';
-    markup = subjects.map(subject => {
-      const subjectQuizzes = quizzes.filter(quiz => quiz.subject === subject);
-      const questionCount = subjectQuizzes.reduce((total, quiz) => total + parseQuiz(quiz.content).length, 0);
-      const color = subjectColor(subject, quizzes);
-      return `<button class="subject-card" type="button" data-subject="${escapeHtml(subject)}" style="--card-accent:${color}">
-        <span class="subject-card-accent" aria-hidden="true"></span>
-        <span class="subject-card-body">
-          <h3>${escapeHtml(subject)}</h3>
-          <p>${subjectQuizzes.length} quiz${subjectQuizzes.length === 1 ? '' : 'zes'} · ${questionCount} questions</p>
-        </span>
-      </button>`;
-    }).join('');
-    empty.textContent = 'Your subjects will appear here after you save a quiz.';
+    $('#libraryTitle').textContent = 'My decks';
+    $('#librarySubtitle').textContent = 'Organize quizzes by subject and pick up where you left off.';
+    markup = subjects.map(subject => subjectCardMarkup(subject, quizzes)).join('');
+    empty.innerHTML = '<strong>Your library is ready.</strong><span>Create your first deck, such as Networking, then add quizzes inside it.</span><button class="primary-button" id="createFirstDeck" type="button">Create your first deck</button>';
   }
 
   empty.hidden = Boolean(markup);
@@ -599,82 +644,135 @@ function renderQuizLibrary(filter = $('#librarySearch').value) {
   grid.innerHTML = markup;
 }
 
-function openSaveModal() {
-  const parsed = parseQuiz(els.input.value);
-  if (!parsed.length) {
-    els.error.textContent = 'Paste at least one complete question before saving it.';
-    els.error.hidden = false;
-    els.input.focus();
-    return;
-  }
-  const subjects = [...new Set(getSavedQuizzes().map(quiz => quiz.subject?.trim() || 'General'))].sort((a, b) => a.localeCompare(b));
-  $('#subjectSuggestions').innerHTML = subjects.map(subject => `<option value="${escapeHtml(subject)}"></option>`).join('');
+function prepareLibraryModal(mode) {
+  libraryModalMode = mode;
   $('#saveModalError').hidden = true;
-  const currentSubject = $('#quizSubject').value.trim();
-  selectSubjectColor(currentSubject ? subjectColor(currentSubject) : SUBJECT_COLORS[0]);
+  const creatingDeck = mode === 'deck';
+  $('#saveModalEyebrow').textContent = creatingDeck ? 'New deck' : 'New quiz';
+  $('#saveModalTitle').textContent = creatingDeck ? 'Create a deck' : `Add to ${activeLibrarySubject}`;
+  $('#saveModalCopy').textContent = creatingDeck
+    ? 'Give this deck a clear subject name so your quizzes stay organized.'
+    : 'Name this quiz now, then paste its questions in the editor.';
+  $('#subjectField').hidden = !creatingDeck;
+  $('#quizNameField').hidden = creatingDeck;
+  $('#subjectColorField').hidden = !creatingDeck;
+  $('#saveQuiz').textContent = creatingDeck ? 'Create deck' : 'Create quiz';
+  if (creatingDeck) {
+    $('#quizSubject').value = '';
+    selectSubjectColor(SUBJECT_COLORS[0]);
+  } else {
+    $('#quizName').value = '';
+  }
   $('#saveQuizModal').hidden = false;
   document.body.classList.add('modal-open');
-  ($('#quizSubject').value.trim() ? $('#quizName') : $('#quizSubject')).focus();
+  (creatingDeck ? $('#quizSubject') : $('#quizName')).focus();
 }
 
 function closeSaveModal(restoreFocus = true) {
   $('#saveQuizModal').hidden = true;
   document.body.classList.remove('modal-open');
-  if (restoreFocus) $('#saveQuizShortcut').focus();
+  if (restoreFocus) (libraryModalMode === 'deck' ? $('#createDeck') : $('#addQuizToSubject')).focus();
 }
 
-function saveCurrentQuiz() {
-  const name = $('#quizName').value.trim();
-  const subject = $('#quizSubject').value.trim();
-  const content = els.input.value.trim();
-  const parsed = parseQuiz(content);
+function createDeck() {
+  const name = $('#quizSubject').value.trim();
   const modalError = $('#saveModalError');
-  if (!subject) {
-    modalError.textContent = 'Enter a subject name, such as Networking.';
+  if (!name) {
+    modalError.textContent = 'Enter a deck name, such as Networking.';
     modalError.hidden = false;
     $('#quizSubject').focus();
     return;
   }
+  const subjects = getSavedSubjects();
+  if (subjects.some(subject => subject.name.toLowerCase() === name.toLowerCase())) {
+    modalError.textContent = 'A deck with that name already exists.';
+    modalError.hidden = false;
+    return;
+  }
+  const chosenColor = document.querySelector('input[name="subjectColor"]:checked')?.value;
+  const deck = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name, color: chosenColor, createdAt: new Date().toISOString() };
+  if (!safeSetItem(SUBJECTS_KEY, JSON.stringify([...subjects, deck]))) {
+    modalError.textContent = 'This browser could not save the deck. Check whether site storage is allowed.';
+    modalError.hidden = false;
+    return;
+  }
+  closeSaveModal(false);
+  activeLibrarySubject = name;
+  showLibraryMessage(`“${name}” is ready. Add your first quiz.`);
+  renderQuizLibrary('');
+  switchWorkspace('library');
+}
+
+function createQuiz() {
+  const name = $('#quizName').value.trim();
+  const modalError = $('#saveModalError');
   if (!name) {
     modalError.textContent = 'Give this quiz a name, such as Formative 1.';
     modalError.hidden = false;
     $('#quizName').focus();
     return;
   }
-  if (!parsed.length) {
-    modalError.textContent = 'The current quiz does not contain a complete question.';
+  const quizzes = getSavedQuizzes();
+  if (quizzes.some(quiz => (quiz.subject?.trim() || 'General').toLowerCase() === activeLibrarySubject.toLowerCase() && quiz.name.toLowerCase() === name.toLowerCase())) {
+    modalError.textContent = 'That quiz name is already used in this deck.';
     modalError.hidden = false;
     return;
   }
-
-  const quizzes = getSavedQuizzes();
-  const existingSubjectColor = quizzes.find(quiz => (quiz.subject?.trim() || 'General').toLowerCase() === subject.toLowerCase() && SUBJECT_COLORS.includes(quiz.color))?.color;
-  const chosenColor = document.querySelector('input[name="subjectColor"]:checked')?.value;
-  const color = SUBJECT_COLORS.includes(existingSubjectColor) ? existingSubjectColor : (SUBJECT_COLORS.includes(chosenColor) ? chosenColor : fallbackSubjectColor(subject));
-  const existing = quizzes.find(quiz => (quiz.subject?.trim() || 'General').toLowerCase() === subject.toLowerCase() && quiz.name.toLowerCase() === name.toLowerCase());
-  if (existing && !window.confirm(`Replace the saved quiz “${existing.name}”?`)) return;
-  const savedQuiz = {
-    id: existing?.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  const quiz = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name,
-    subject,
-    color,
-    content,
+    subject: activeLibrarySubject,
+    color: subjectColor(activeLibrarySubject, quizzes),
+    content: '',
     updatedAt: new Date().toISOString()
   };
-  const next = existing ? quizzes.map(quiz => quiz.id === existing.id ? savedQuiz : quiz) : [savedQuiz, ...quizzes];
-  if (!safeSetItem(LIBRARY_KEY, JSON.stringify(next))) {
+  if (!safeSetItem(LIBRARY_KEY, JSON.stringify([quiz, ...quizzes]))) {
     modalError.textContent = 'This browser could not save the quiz. Check whether site storage is allowed.';
     modalError.hidden = false;
     return;
   }
-  $('#quizName').value = '';
-  $('#quizSubject').value = '';
-  $('#librarySearch').value = '';
   closeSaveModal(false);
-  activeLibrarySubject = subject;
-  showLibraryMessage(existing ? 'Saved quiz updated.' : 'Quiz saved to your library.');
-  renderQuizLibrary('');
-  switchWorkspace('library');
+  openQuizEditor(quiz);
+}
+
+function openQuizEditor(quiz) {
+  activeQuizId = quiz.id;
+  activeLibrarySubject = quiz.subject?.trim() || 'General';
+  els.input.value = quiz.content || '';
+  $('#editorQuizName').textContent = quiz.name;
+  $('#editorSubjectName').textContent = `${activeLibrarySubject} deck · Paste or edit the questions for this quiz.`;
+  $('#backToDeck').lastChild.textContent = ` Back to ${activeLibrarySubject}`;
+  updateEstimate();
+  els.error.hidden = true;
+  switchWorkspace('create');
+  els.input.focus();
+}
+
+function saveActiveQuiz(showConfirmation = true) {
+  const quizzes = getSavedQuizzes();
+  const quiz = quizzes.find(item => item.id === activeQuizId);
+  if (!quiz) return false;
+  const content = els.input.value.trim();
+  if (!parseQuiz(content).length) {
+    els.error.textContent = 'Add at least one complete question and mark its answer before saving.';
+    els.error.hidden = false;
+    els.input.focus();
+    return false;
+  }
+  const updated = { ...quiz, content, updatedAt: new Date().toISOString() };
+  if (!safeSetItem(LIBRARY_KEY, JSON.stringify(quizzes.map(item => item.id === quiz.id ? updated : item)))) {
+    els.error.textContent = 'This browser could not save your changes.';
+    els.error.hidden = false;
+    return false;
+  }
+  safeSetItem('learnityQuizText', content);
+  els.error.hidden = true;
+  if (showConfirmation) {
+    showLibraryMessage(`“${quiz.name}” saved.`);
+    renderQuizLibrary('');
+    switchWorkspace('library');
+  }
+  return true;
 }
 
 $('#loadSample').addEventListener('click', () => { els.input.value = sampleQuiz; updateEstimate(); els.input.focus(); });
@@ -688,6 +786,7 @@ $('#startQuiz').addEventListener('click', () => {
     return;
   }
   els.error.hidden = true;
+  if (activeQuizId && !saveActiveQuiz(false)) return;
   safeSetItem('learnityQuizText', els.input.value);
   startQuiz(parsed);
 });
@@ -695,8 +794,14 @@ $('#nextQuestion').addEventListener('click', advance);
 $('#exitQuiz').addEventListener('click', () => switchWorkspace('create'));
 $('#restartQuiz').addEventListener('click', () => switchWorkspace('create'));
 $('#retryMissed').addEventListener('click', () => startQuiz(responses.filter(r => !r.correct).map(r => r.question)));
-$('#saveQuiz').addEventListener('click', saveCurrentQuiz);
-$('#saveQuizShortcut').addEventListener('click', openSaveModal);
+$('#saveQuiz').addEventListener('click', () => libraryModalMode === 'deck' ? createDeck() : createQuiz());
+$('#saveQuizShortcut').addEventListener('click', () => saveActiveQuiz(true));
+$('#createDeck').addEventListener('click', () => prepareLibraryModal('deck'));
+$('#addQuizToSubject').addEventListener('click', () => prepareLibraryModal('quiz'));
+$('#backToDeck').addEventListener('click', () => {
+  renderQuizLibrary('');
+  switchWorkspace('library');
+});
 $('#closeSaveModal').addEventListener('click', closeSaveModal);
 $('#cancelSaveQuiz').addEventListener('click', closeSaveModal);
 $('#saveQuizModal').addEventListener('click', event => {
@@ -705,18 +810,18 @@ $('#saveQuizModal').addEventListener('click', event => {
 $('#quizSubject').addEventListener('keydown', event => {
   if (event.key === 'Enter') {
     event.preventDefault();
-    $('#quizName').focus();
+    createDeck();
   }
-});
-$('#quizSubject').addEventListener('change', event => {
-  const subject = event.target.value.trim();
-  if (subject) selectSubjectColor(subjectColor(subject));
 });
 $('#quizName').addEventListener('keydown', event => {
   if (event.key === 'Enter') {
     event.preventDefault();
-    saveCurrentQuiz();
+    createQuiz();
   }
+});
+$('#libraryEmpty').addEventListener('click', event => {
+  if (event.target.closest('#createFirstDeck')) prepareLibraryModal('deck');
+  if (event.target.closest('.empty-add-quiz')) prepareLibraryModal('quiz');
 });
 $('#librarySearch').addEventListener('input', event => renderQuizLibrary(event.target.value));
 $('#libraryBack').addEventListener('click', () => {
@@ -737,17 +842,7 @@ $('#libraryGrid').addEventListener('click', event => {
   const quiz = quizzes.find(item => item.id === card.dataset.quizId);
   if (!quiz) return;
 
-  if (event.target.closest('.open-quiz')) {
-    els.input.value = quiz.content;
-    $('#quizName').value = quiz.name;
-    $('#quizSubject').value = quiz.subject?.trim() || 'General';
-    selectSubjectColor(subjectColor(quiz.subject?.trim() || 'General', quizzes));
-    updateEstimate();
-    safeSetItem('learnityQuizText', quiz.content);
-    switchWorkspace('create');
-    document.querySelector('.import-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
-    showLibraryMessage(`Opened “${quiz.name}”.`);
-  } else if (event.target.closest('.practice-quiz')) {
+  if (event.target.closest('.practice-quiz')) {
     const parsed = prepareQuestions(quiz.content);
     if (!parsed.length) {
       showLibraryMessage('This saved quiz no longer contains a complete question.', true);
@@ -756,6 +851,7 @@ $('#libraryGrid').addEventListener('click', event => {
     els.input.value = quiz.content;
     updateEstimate();
     safeSetItem('learnityQuizText', quiz.content);
+    activeQuizId = quiz.id;
     startQuiz(parsed);
   } else if (event.target.closest('.delete-quiz')) {
     if (!window.confirm(`Delete “${quiz.name}” from your library?`)) return;
@@ -763,14 +859,31 @@ $('#libraryGrid').addEventListener('click', event => {
     safeSetItem(LIBRARY_KEY, JSON.stringify(remaining));
     showLibraryMessage('Quiz deleted.');
     renderQuizLibrary();
+  } else {
+    openQuizEditor(quiz);
   }
 });
+$('#libraryGrid').addEventListener('keydown', event => {
+  if (event.key !== 'Enter' || !event.target.matches('.library-card')) return;
+  const quiz = getSavedQuizzes().find(item => item.id === event.target.dataset.quizId);
+  if (quiz) openQuizEditor(quiz);
+});
 document.querySelectorAll('.nav-tab').forEach(tab => {
-  tab.addEventListener('click', () => switchWorkspace(tab.dataset.panel));
+  tab.addEventListener('click', () => {
+    if (tab.dataset.panel === 'library') {
+      activeLibrarySubject = null;
+      $('#librarySearch').value = '';
+      renderQuizLibrary('');
+    }
+    switchWorkspace(tab.dataset.panel);
+  });
 });
 $('.brand').addEventListener('click', event => {
   event.preventDefault();
-  switchWorkspace('create');
+  activeLibrarySubject = null;
+  $('#librarySearch').value = '';
+  renderQuizLibrary('');
+  switchWorkspace('library');
 });
 $('#clearProgress').addEventListener('click', () => {
   if (!window.confirm('Clear all saved Learnity progress? This cannot be undone.')) return;
@@ -853,3 +966,4 @@ els.input.value = safeGetItem('learnityQuizText') || safeGetItem('practiceQuizTe
 updateEstimate();
 renderProgressDashboard();
 renderQuizLibrary();
+switchWorkspace('library');
